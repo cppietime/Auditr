@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/time.h>
 #include "filter.h"
 #include "fft.h"
 
@@ -192,8 +193,16 @@ vowel* make_vowel(double srate, double* freqs, double* mags, int ord_poles){
 	return ret;
 }
 
+void free_vowel(vowel* v){
+	if(v->zeros!=NULL)
+		rfunc_free(v->zeros);
+	if(v->poles!=NULL)
+		rfunc_free(v->poles);
+	free(v);
+}
+
 vowel *V_A, *V_E, *V_I, *V_O, *V_U;
-consonant *C_P;
+consonant *C_N, *C_L, *C_M;
 void make_vowels(double srate){
 	double fA[] = {660,1700,2400,0,0};
 	double fE[] = {270,2300,3000,0,0};
@@ -206,30 +215,43 @@ void make_vowels(double srate){
 	V_I = make_vowel(srate,fI,mags,3);
 	V_O = make_vowel(srate,fO,mags,3);
 	V_U = make_vowel(srate,fU,mags,3);
-	double fP[] = {400,1600,2600,0,0};
-	vowel* tmp = make_vowel(srate,fP,mags,3);
-	C_P = malloc(sizeof(consonant));
-	*C_P = (consonant){tmp->zeros,tmp->poles,.5,1,{1,.1},{0,.04},{0,0},{.04,.1},{.0,.0},{.13,.024},{1,0},0,.025,.14,.02};
+	double fT[] = {400,1600,2600,0,0};
+	vowel* tmp = make_vowel(srate,fT,mags,3);
+	C_N = malloc(sizeof(consonant));
+	*C_N = (consonant){tmp->zeros,tmp->poles,1,0,{1,0},{0,.0},{0,0},{.06,0},{.06,.0},{.13,0},{1,0},0,.0,.12,.12};
+	C_L = malloc(sizeof(consonant));
+	*C_L = (consonant){tmp->zeros,tmp->poles,1,0,{0,0},{0,0},{0,0},{.02,.02},{.1,.01},{.14,.01},{.7,0},0,0,.12,.26};
+	free(tmp);
+	double fP[] = {400,1100,2150,0,0};
+	tmp = make_vowel(srate,fP,mags,3);
+	C_M = malloc(sizeof(consonant));
+	*C_M = (consonant){tmp->zeros,tmp->poles,1,0,{1,0},{0,.0},{0,0},{.06,0},{.1,.0},{.13,0},{1,0},0,.0,.12,.12};
 	free(tmp);
 }
 
 void clear_vowels(){
-	free(V_A->zeros);
-	free(V_E->zeros);
-	free(V_I->zeros);
-	free(V_O->zeros);
-	free(V_U->zeros);
-	free(V_A->poles);
-	free(V_E->poles);
-	free(V_I->poles);
-	free(V_O->poles);
-	free(V_U->poles);
+	rfunc_free(V_A->zeros);
+	rfunc_free(V_E->zeros);
+	rfunc_free(V_I->zeros);
+	rfunc_free(V_O->zeros);
+	rfunc_free(V_U->zeros);
+	rfunc_free(C_N->zeros);
+	rfunc_free(C_M->zeros);
+	rfunc_free(V_A->poles);
+	rfunc_free(V_E->poles);
+	rfunc_free(V_I->poles);
+	rfunc_free(V_O->poles);
+	rfunc_free(V_U->poles);
+	rfunc_free(C_N->poles);
+	rfunc_free(C_M->poles);
 	free(V_A);
 	free(V_E);
 	free(V_I);
 	free(V_O);
 	free(V_U);
-	free(C_P);
+	free(C_N);
+	free(C_L);
+	free(C_M);
 }
 
 void play_phoneme(vowel* formant, consonant* stop, phoneme* sound, double srate, double* dst, double* end){
@@ -243,6 +265,7 @@ void play_phoneme(vowel* formant, consonant* stop, phoneme* sound, double srate,
 	int period = srate/sound->frequency;
 	double vamp = 1;
 	double vlamp = 1;
+	double phase = 0;
 	int i;
 	for(i=0; i<(int)(sound->length*srate); i++){
 		double dur = i/srate;
@@ -268,7 +291,8 @@ void play_phoneme(vowel* formant, consonant* stop, phoneme* sound, double srate,
 			else
 				vlamp = stop->sustain[1];
 		}
-		buffer[i] = voice*vamp/period*(i%period) + voiceless*vlamp/RAND_MAX*rand();
+		buffer[i] = voice*vamp*sound->func(phase) + voiceless*vlamp/RAND_MAX*rand();
+		phase += (sound->frequency+sound->sweep*dur/sound->length)/srate;
 	}
 	double* cbuf = NULL;
 	if(stop!=NULL){
@@ -301,38 +325,40 @@ void play_phoneme(vowel* formant, consonant* stop, phoneme* sound, double srate,
 		free(cbuf);
 }
 
-int main(){
-	int srate = 44100;
-	make_vowels(srate);
-	int secs = 2;
-	int length = secs*srate;
-	double* samps = malloc(sizeof(double)*length);
-	phoneme phone = {1,100,2./3};
-	play_phoneme(V_A,C_P,&phone,(srate),samps,samps+length);
-	phone.frequency=126;
-	play_phoneme(V_U,C_P,&phone,(srate),samps+length/3,samps+length);
-	phone.frequency=133;
-	play_phoneme(V_U,C_P,&phone,(srate),samps+length/3*2,samps+length);
-	wavhead header;
-	header.channels=1;
-	header.sampleRate=srate;
-	header.bps=16;
-	header.dataSize = 2*length;
-	validate_header(&header);
-	int16_t* data = malloc(sizeof(int16_t)*length);
-	int max = 0;
-	int i;
-	for(i=0; i<length; i++){
-		data[i] = samps[i]*32767;
-		if(data[i]>max)max=data[i];
-	}
-	printf("Max: %d\n",max);
-	FILE* output = fopen("train.wav","wb");
-	fwrite(&header,sizeof(header),1,output);
-	fwrite(data,2,length,output);
-	fclose(output);
-	free(samps);
-	free(data);
-	clear_vowels();
-	return 0;
-}
+// int main(){
+	// srand(time(NULL));
+	// int i;
+	// int srate = 44100;
+	// make_vowels(srate);
+	// int secs = 10;
+	// int length = secs*srate;
+	// double* samps = malloc(sizeof(double)*length);
+	// phoneme phone = {1,100,5,.25,sawtooth};
+	// for(i=0; i<40; i++){
+		// int note = rand()%40;
+		// double freq = 55*pow(2,note/12.);
+		// phone.frequency=freq;
+		// play_phoneme(V_I,C_L,&phone,srate,samps+length/40*i,samps+length);
+	// }
+	// wavhead header;
+	// header.channels=1;
+	// header.sampleRate=srate;
+	// header.bps=16;
+	// header.dataSize = 2*length;
+	// validate_header(&header);
+	// int16_t* data = malloc(sizeof(int16_t)*length);
+	// int max = 0;
+	// for(i=0; i<length; i++){
+		// data[i] = samps[i]*32767;
+		// if(data[i]>max)max=data[i];
+	// }
+	// printf("Max: %d\n",max);
+	// FILE* output = fopen("train.wav","wb");
+	// fwrite(&header,sizeof(header),1,output);
+	// fwrite(data,2,length,output);
+	// fclose(output);
+	// free(samps);
+	// free(data);
+	// clear_vowels();
+	// return 0;
+// }
