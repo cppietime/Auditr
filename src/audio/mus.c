@@ -70,7 +70,7 @@ wavegen drivers[] = {
 	};
 
 void render_to(instrument* sound, double srate, double* dst, double* end){
-	printf("Note freq:%lf amp:%lf dur:%lf\n",sound->frequency,sound->amplitude,sound->duration);
+	// printf("Note freq:%lf amp:%lf dur:%lf\n",sound->frequency,sound->amplitude,sound->duration);
 	int size = (sound->duration+sound->release)*srate;
 	double *phase_buf = NULL,
 		*amp_buf = NULL,
@@ -238,6 +238,7 @@ void prop_duration(instrument* inst){
 	}
 }
 
+//Propagates frequency change through phase modulator, if it exists
 void prop_freq(instrument* inst){
 	if(inst->phase_mod!=NULL){
 		inst->phase_mod->frequency=inst->frequency*inst->pm_ratio;
@@ -245,6 +246,7 @@ void prop_freq(instrument* inst){
 	}
 }
 
+//Reset self and all children's phases
 void reset_phase(instrument* inst){
 	inst->phase=0;
 	if(inst->phase_mod!=NULL){
@@ -261,6 +263,7 @@ void reset_phase(instrument* inst){
 	}
 }
 
+//Tests whether bit or little endian
 int endianness(){
 	int a = 1;
 	char b = *((char*)&a);
@@ -269,6 +272,7 @@ int endianness(){
 
 static int big_endian = 2;
 
+//When necessary, call this to swap memory's endianness
 void swap_endianness(void* mem, int len){
 	char* bytes = (char*)mem;
 	int i;
@@ -279,6 +283,7 @@ void swap_endianness(void* mem, int len){
 	}
 }
 
+//Read little-endian float
 float read_float(FILE* stream){
 	if(big_endian==2)
 		big_endian = endianness();
@@ -289,6 +294,7 @@ float read_float(FILE* stream){
 	return ret;
 }
 
+//Write a float to a file little-endian
 void write_float(FILE* stream, float val){
 	if(big_endian==2)
 		big_endian = endianness();
@@ -297,6 +303,7 @@ void write_float(FILE* stream, float val){
 	fwrite(&val,sizeof(float),1,stream);
 }
 
+//Shidi interpreter
 void code_to_wave(FILE* in, FILE* out){
 	double* buffer = NULL;
 	double srate = 44100;
@@ -574,6 +581,7 @@ measure* gen_measure(int len, pseudorand func){
 	return ret;
 }
 
+//Master tracks are not played, they are essentially lists of available measures
 track* gen_master_track(int len, int measure_len, pseudorand func){
 	track* master = malloc(sizeof(track)+sizeof(measure*)*len);
 	master->len=len;
@@ -591,6 +599,7 @@ void free_master_track(track* track){
 	free(track);
 }
 
+//These can be freed just with free
 track* gen_play_track(int len, track* master, pseudorand func){
 	track* ret = malloc(sizeof(track)+sizeof(measure*)*len);
 	ret->len=len;
@@ -601,6 +610,7 @@ track* gen_play_track(int len, track* master, pseudorand func){
 	return ret;
 }
 
+//Appends track to file, starting at time=0. init_file first
 void write_track(FILE* out, track* track, pseudorand func){
 	//Set v1
 	fputc(2,out);
@@ -687,6 +697,7 @@ void write_track(FILE* out, track* track, pseudorand func){
 	}
 }
 
+//Call once per file to set up
 void init_file(FILE* out,double srate, double basefreq, double bps, double beats, int tracks){
 	//srate
 	fputc(35,out);
@@ -708,16 +719,19 @@ void init_file(FILE* out,double srate, double basefreq, double bps, double beats
 	write_float(out,1.0/tracks);
 }
 
-int main(){
+int main(int argc, char** argv){
+	char name[128] = "shidi.wav";
+	if(argc>1)
+		strcpy(name,argv[1]);
 	srand(time(NULL));
 	pseudorand choice = randoms[rand()%RANDOMS];
 	logmap_r = rand()*0.4/RAND_MAX+3.6;
 	double srate = 44100,
 		bps = choice(6)+1,
 		bpm = 2*((int)choice(2)+1),
-		mpb = 4*((int)choice(10)+2),
-		uni_meas = (int)choice(5)+3,
-		basefreq = 27.5 * pow(2,choice(12)/12.0);
+		mpb = 4*((int)choice(15)+2)+1,
+		uni_meas = (int)choice(9)+3,
+		basefreq = 55 * pow(2,choice(12)/12.0);
 	int tracknum = (int)choice(3)+1;
 	make_vowels(srate);
 	init_instrs();
@@ -734,7 +748,7 @@ int main(){
 	}
 	fclose(shid);
 	shid = fopen("shidi.shid","rb");
-	FILE* wave = fopen("shidi.wav","wb");
+	FILE* wave = fopen(name,"wb");
 	code_to_wave(shid,wave);
 	fclose(shid);
 	fclose(wave);
