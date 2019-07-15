@@ -560,12 +560,12 @@ measure* gen_measure(int len, pseudorand func){
 	double runtime = 0;
 	for(i=0; i<len; i++){
 		int index = (int)func(24);
-		if(microtonal==0)
+		if(microtonal<6)
 			ret->notedata[i*3]=scale[index];
-		else if(microtonal==1)
+		else if(microtonal==6)
 			ret->notedata[i*3]=index;
 		else
-			ret->notedata[i*3]=index+1.0*(int)func(microtonal)/microtonal;
+			ret->notedata[i*3]=index+1.0*(int)func(microtonal-5)/(microtonal-5);
 	}
 	for(i=0; i<len; i++){
 		ret->notedata[i*3+1]=func(len/2)+1;
@@ -731,12 +731,12 @@ int main(int argc, char** argv){
 		bpm = 2*((int)choice(2)+1),
 		mpb = 4*((int)choice(15)+2)+1,
 		uni_meas = (int)choice(9)+3,
-		basefreq = 55 * pow(2,choice(12)/12.0);
+		basefreq = 55 * pow(2,choice(24)/12.0);
 	int tracknum = (int)choice(3)+1;
 	make_vowels(srate);
 	init_instrs();
 	FILE* shid = fopen("shidi.shid","wb");
-	microtonal = (int)choice(4);
+	microtonal = (int)choice(10);
 	init_file(shid,srate,basefreq,bps,bpm*mpb,tracknum);
 	int i;
 	for(i=0; i<tracknum; i++){
