@@ -7,6 +7,8 @@
 #include "fft.h"
 #include "filter.h"
 #include "mus.h"
+#include "vowel.h"
+#include "wav.h"
 
 #define PLAYERS 16
 #define VOWELS 16

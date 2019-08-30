@@ -1,6 +1,7 @@
 #ifndef _H_MUS
 #define _H_MUS
 
+#include "vowel.h"
 #include "filter.h"
 
 double sawtooth(double);
